@@ -3,11 +3,11 @@
   <parent>
     <groupId>org.jenkins-ci.plugins</groupId>
     <artifactId>plugin</artifactId>
-    <version>1.466</version>
+    <version>1.520</version>
   </parent>
 
   <artifactId>git</artifactId>
-  <version>1.4.1-SNAPSHOT</version>
+  <version>1.4.0-kostmo</version>
   <packaging>hpi</packaging>
   <name>Jenkins GIT plugin</name>
   <description>Integrates Jenkins with GIT SCM</description>
@@ -123,7 +123,7 @@
     <dependency>
         <groupId>com.google.guava</groupId>
         <artifactId>guava</artifactId>
-        <version>r09</version>
+        <version>13.0.1</version>
     </dependency>
     <dependency>
       <groupId>com.infradna.tool</groupId>
@@ -140,7 +140,7 @@
     <dependency>
       <groupId>org.jenkins-ci.plugins</groupId>
       <artifactId>git-client</artifactId>
-      <version>1.0.6</version>
+      <version>1.0.7</version>
     </dependency>
 
 	<!-- we contribute our own custom Rebuild action -->
