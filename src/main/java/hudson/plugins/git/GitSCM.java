@@ -1,26 +1,75 @@
 package hudson.plugins.git;
 
-import hudson.*;
+import static hudson.Util.fixEmptyAndTrim;
+import static hudson.init.InitMilestone.JOB_LOADED;
+import static hudson.init.InitMilestone.PLUGINS_STARTED;
+import hudson.AbortException;
+import hudson.EnvVars;
+import hudson.Extension;
+import hudson.FilePath;
 import hudson.FilePath.FileCallable;
+import hudson.Launcher;
+import hudson.Util;
 import hudson.init.Initializer;
-import hudson.matrix.MatrixBuild;
 import hudson.matrix.MatrixRun;
-import hudson.model.*;
+import hudson.matrix.MatrixBuild;
+import hudson.model.Action;
+import hudson.model.BuildListener;
+import hudson.model.Items;
+import hudson.model.Result;
+import hudson.model.TaskListener;
+import hudson.model.AbstractBuild;
+import hudson.model.AbstractProject;
+import hudson.model.CauseAction;
 import hudson.model.Descriptor.FormException;
+import hudson.model.Hudson;
 import hudson.model.Hudson.MasterComputer;
+import hudson.model.Label;
+import hudson.model.Node;
+import hudson.model.Run;
 import hudson.plugins.git.browser.GitRepositoryBrowser;
 import hudson.plugins.git.browser.GitWeb;
 import hudson.plugins.git.opt.PreBuildMergeOptions;
 import hudson.plugins.git.rebuild.GitRebuildAction.GitRebuildCause;
 import hudson.plugins.git.util.Build;
-import hudson.plugins.git.util.*;
+import hudson.plugins.git.util.BuildChooser;
+import hudson.plugins.git.util.BuildChooserContext;
+import hudson.plugins.git.util.BuildChooserDescriptor;
+import hudson.plugins.git.util.BuildData;
+import hudson.plugins.git.util.DefaultBuildChooser;
+import hudson.plugins.git.util.GitUtils;
+import hudson.plugins.git.util.MergeBuild;
 import hudson.remoting.Channel;
 import hudson.remoting.VirtualChannel;
-import hudson.scm.*;
+import hudson.scm.ChangeLogParser;
+import hudson.scm.PollingResult;
+import hudson.scm.SCMDescriptor;
+import hudson.scm.SCMRevisionState;
+import hudson.scm.SCM;
 import hudson.triggers.SCMTrigger;
 import hudson.util.FormValidation;
 import hudson.util.IOException2;
 import hudson.util.IOUtils;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.io.Serializable;
+import java.net.MalformedURLException;
+import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
+
+import javax.servlet.ServletException;
+
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 
@@ -36,22 +85,7 @@ import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.StaplerResponse;
 import org.kohsuke.stapler.export.Exported;
 
-import javax.servlet.ServletException;
-
-import java.io.File;
-import java.io.IOException;
-import java.io.PrintStream;
-import java.io.Serializable;
-import java.net.MalformedURLException;
-import java.text.MessageFormat;
-import java.util.*;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.regex.Pattern;
-
-import static hudson.Util.fixEmptyAndTrim;
-import static hudson.init.InitMilestone.JOB_LOADED;
-import static hudson.init.InitMilestone.PLUGINS_STARTED;
+import com.google.common.collect.Lists;
 
 /**
  * Git SCM.
@@ -113,6 +147,8 @@ public class GitSCM extends SCM implements Serializable {
     public String gitTool = null;
     private GitRepositoryBrowser browser;
     private Collection<SubmoduleConfig> submoduleCfg;
+    public final int maxBranchAgeDays;
+    private List<AncestryRefSpec> ancestors;
     public static final String GIT_BRANCH = "GIT_BRANCH";
     public static final String GIT_COMMIT = "GIT_COMMIT";
     public static final String GIT_PREVIOUS_COMMIT = "GIT_PREVIOUS_COMMIT";
@@ -153,6 +189,8 @@ public class GitSCM extends SCM implements Serializable {
                 Collections.singletonList(new BranchSpec("")),
                 null,
                 false, Collections.<SubmoduleConfig>emptyList(), false,
+                8,
+                Collections.<AncestryRefSpec>emptyList(),
                 false, new DefaultBuildChooser(), null, null, false, null,
                 null,
                 null, null, null, false, false, false, false, null, null, false, null, false, false);
@@ -167,6 +205,8 @@ public class GitSCM extends SCM implements Serializable {
             Boolean doGenerateSubmoduleConfigurations,
             Collection<SubmoduleConfig> submoduleCfg,
             boolean clean,
+            int maxBranchAgeDays,
+            List<AncestryRefSpec> ancestors,
             boolean wipeOutWorkspace,
             BuildChooser buildChooser, GitRepositoryBrowser browser,
             String gitTool,
@@ -218,6 +258,11 @@ public class GitSCM extends SCM implements Serializable {
             submoduleCfg = new ArrayList<SubmoduleConfig>();
         }
         this.submoduleCfg = submoduleCfg;
+        this.maxBranchAgeDays = maxBranchAgeDays;
+        
+        if (ancestors == null)
+        	ancestors = Lists.newArrayList();
+        this.ancestors = ancestors;
 
         this.clean = clean;
         this.wipeOutWorkspace = wipeOutWorkspace;
@@ -1700,6 +1745,11 @@ public class GitSCM extends SCM implements Serializable {
     @Exported
     public List<BranchSpec> getBranches() {
         return branches;
+    }
+
+    @Exported
+    public List<AncestryRefSpec> getAncestors() {
+        return ancestors;
     }
 
     @Exported
