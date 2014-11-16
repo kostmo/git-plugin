@@ -131,7 +131,7 @@ public class AncestryBuildChooserTest extends AbstractGitTestCase {
         GitSCM gitSCM = new GitSCM("foo");
         gitSCM.getExtensions().add(new BuildChooserSetting(new AncestryBuildChooser(maxAgeInDays, ancestorCommitSha1)));
         
-        // mock neccessary objects
+        // mock necessary objects
         GitClient git = Mockito.spy(this.git);
         Mockito.when(git.getRemoteBranches()).thenReturn(this.git.getBranches());
         
